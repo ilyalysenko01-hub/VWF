@@ -1,0 +1,68 @@
+import numpy as np
+import matplotlib.pyplot as plt
+Nx, Ny, Nt = 50, 50, 50 #количество шагов
+T = 1
+x = np.linspace(0, 1, Nx)
+y = np.linspace(0, np.pi/2, Ny)
+t = np.linspace (0, T, Nt)
+h_x = x[1] - x[0]
+h_y = y[1] - y[0]
+tau = t[1] - t[0]
+gamma_x = tau / h_x ** 2
+gamma_y = tau / h_y ** 2
+u = np.zeros((Nx, Ny, 2 * Nt + 1))
+def F_1(i1, i2, j):
+    return 0.5 * gamma_y * (u[i1, i2-1, j-1] + u[i1, i2+1, j-1]) + (1 - gamma_y) * u[i1, i2, j-1] + 0.5 * tau * x[i1] * (tau * (j + 1) / 2) ** 2 * np.sin(y[i2])
+def F_2(i1, i2, j):
+    return 0.5 * gamma_x * (u[i1-1, i2, j-1] + u[i1+1, i2, j-1]) + (1 - gamma_x) * u[i1, i2, j-1] + 0.5 * tau * x[i1] * (tau * (j - 1) / 2) ** 2 * np.sin(y[i2])
+def progonka_x(i2, j):
+    d = np.zeros(Nx)
+    sigma = np.zeros(Nx)
+    d[1] = 1
+    sigma[1] = 0
+    A = 0.5 * gamma_x
+    B = 1 + gamma_x
+    C = 0.5 * gamma_x
+    for m in range(1, Nx-1):
+        Fm = -F_1(m, i2, j)
+        d[m+1] = C / (B - A * d[m])
+        sigma[m+1] = (Fm - A * sigma[m]) / (A * d[m] - B)
+    u[Nx-1, i2, j] = sigma[-1] / (1 - d[-1])
+    for m in range(Nx-1, 0, -1):
+        u[m-1, i2, j] = d[m] * u[m, i2, j] + sigma[m]
+def progonka_y(i1, j):
+    d = np.zeros(Ny)
+    sigma = np.zeros(Ny)
+    d[1] = 0
+    sigma[1] = 0
+    A = 0.5 * gamma_y
+    B = 1 + gamma_y
+    C = 0.5 * gamma_y
+    for m in range(1, Ny-1):
+        Fm = -F_2(i1, m, j)
+        d[m+1] = C / (B - A * d[m])
+        sigma[m+1] = (Fm - A * sigma[m]) / (A * d[m] - B)
+    u[i1, Ny-1, j] = sigma[-1] / (1 - d[-1])
+    for m in range(Ny-1, 0, -1):
+        u[i1, m-1, j] = d[m] * u[i1, m, j] + sigma[m]
+u[:, :, 0] = 0
+for j in range(1, 2*Nt, 2):
+    for i2 in range(1, Ny-1):
+        progonka_x(i2, j)
+    for i1 in range(1, Nx-1):
+        progonka_y(i1, j+1)
+
+# fig = plt.figure()
+# ax = fig.gca(projection='3d')
+# y, x = np.meshgrid(y, x)
+# surf = ax.plot_surface( x, y, u[:, :, 50], cmap='summer')
+
+
+#plt.title('Solution')
+#plt.xlabel('x')
+#plt.ylabel('y')
+#plt.show()
+
+fig = plt.figure(figsize=(8,6))
+plt.pcolormesh(y,x,u[:,:,-1], cmap='coolwarm')
+plt.show()
