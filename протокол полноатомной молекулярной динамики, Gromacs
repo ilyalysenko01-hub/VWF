@@ -1,0 +1,79 @@
+# Очищаем от ненужной воды (мы потом "зальём" своей, громаксовой воды):
+grep -v HOH dd3-a1-a2-a3_fill_1.pdb > dd3-a1-a2-a3_fill_1_clean.pdb
+
+# Конвертируем эту чистую структуру в файлы формата gromacs:
+gmx_mpi pdb2gmx -f dd3-a1-a2-a3_fill_1_clean.pdb -o dd3-a1-a2-a3_fill_1_processed.gro -ignh
+
+# Теперь нам надо задать симуляционную ячейку 
+# (далее все структуры буду сохранять в файл conf.gro и перезаписывать его)
+gmx_mpi editconf -f dd3-a1-a2-a3_fill_1_processed.gro -o conf.gro -c -d 1.5 -bt cubic
+
+# Добавляем растворитель (воду).
+gmx_mpi solvate -cp conf.gro -p topol.top -o conf.gro
+
+# Добавляем соль.
+# Надо превратить часть молекул воды в ионы NaCl.
+gmx_mpi grompp -f md.mdp -c conf.gro -maxwarn 99
+gmx_mpi genion -s topol.tpr -pname NA -nname CL -neutral -conc 0.15 -o conf.ions.gro -p topol.top
+# когда спросит, кого заменять, надо ответить 13 - растворитель ("SOL" - сокр. "solvent")
+
+#########################################################################
+#        Equilibration = Уравновешивание системы
+#########################################################################
+# Минимизируем энергию, чтобы избежать наложений и перекрытий атомов.
+# (100000 steps * 0.002 ps)
+
+gmx_mpi grompp -f em.mdp -c conf.ions.gro -p topol.top -o em.tpr
+gmx_mpi mdrun -v -deffnm em
+
+# График потенциальной энергии:
+gmx_mpi energy -f em.edr -o potential.xvg
+# В терминале: 11 0
+# Построить график можно в gnuplot или grace
+# xmgrace potential.xvg
+
+##########################################################
+# Термостатируем систему - NVT (50000 * 0.002 ps = 100 ps)
+gmx_mpi grompp -f nvt.mdp -c em.gro -r em.gro -p topol.top -o nvt.tpr
+sbatch -n64 -t 20:00 ompi gmx_mpi mdrun -deffnm nvt
+
+gmx_mpi energy -f nvt.edr -o temperature.xvg - график температуры
+
+##################################################
+# Баростатируем - NPT  (500000 * 0.002 ps = 1000 ps)
+# При этом фиксируем тяжелые атомы
+
+# Полная аналогия. Но обратить внимание на отличие блока вывода в npt.mdp от nvt.mdp
+# Здесь мы сохраняем траекторию в xtc-файл вместо trr-файла для экономии дискового пространства.
+
+gmx_mpi grompp -f npt.mdp -c nvt.gro -r em.gro -p topol.top -o npt.tpr
+sbatch -n64 -t 20:00 ompi gmx_mpi mdrun -deffnm npt   
+
+####   Для старта с чекпоинта   gmx mdrun -deffnm npt -cpi npt.cpt
+
+# Когда закончит - анализируем плотность
+gmx_mpi energy -f npt.edr -o density.xvg
+
+# В терминале: 24 0
+
+# xmgrace density.xvg
+
+######################################################################
+#               Запускаем продуктивную симуляцию
+######################################################################
+#  NPT2 - без рестрейнтов и ограничений  (100000000 * 0.002 ps = 200000 = 20 ns)
+#  Полноценная молдинамика в NPT-ансамбле с явным растворителем.
+#  Обратить внимание на отличия npt.mdp от npt2.mdp
+
+
+gmx_mpi grompp -f npt2.mdp -c npt.gro -r npt.gro -p topol.top -o npt2.tpr
+sbatch -n128 -t 72:00:00 ompi gmx_mpi mdrun -deffnm npt2   
+
+# Если хочется траекторию длиннее, то можем увеличить предельное число шагов интегрирования:
+# (допустим, надо получить траекторию 300 ps = 150000 * 0.002 ps)
+
+gmx_mpi convert-tpr -s npt2.tpr -nsteps 100000000 -o npt2.tpr
+
+# и продолжить расчет с чек-поинта:
+
+sbatch -n128 -t 72:00:00 ompi gmx_mpi mdrun -deffnm npt2 -cpi npt2.cpt
