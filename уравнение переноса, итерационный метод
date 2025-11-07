@@ -1,0 +1,60 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+N, M = 100, 100 # количество x, t
+X, T = 1, 5
+tau = T/(M-1)
+h = X/(N-1)
+y = np.zeros((N, M), dtype=float)
+x, t = np.linspace(0, X, N), np.linspace(0, T, M)
+dx=0.0001
+h = float(X)/(N-1)
+tau = float(T)/(M-1)
+eps = 0.0001 # невязка
+y[:, 0] = np.sin(np.pi*x/2)
+y[0, :] = 0
+def F(x,s,n,y):
+    return x/(2*tau)-np.exp(-x*x)/(2*h)+(y[s-1][n]-y[s-1][n-1]-y[s][n-1])/(2*tau)-(-p(y[s-1][n])+p(y[s][n-1])-p(y[s-1][n-1]))/(2*h)
+def p(x):
+    return np.exp(-x**2)
+for i in range(1, N):
+    for j in range(1, M):
+        x_prev = y[i, j-1] # начальное приближение
+        x_next=x_prev+1
+        d = eps+1 # чтобы цикл запустился
+        #print(i,j)
+        while (d > eps):
+            x0=x_prev
+            x_prev=x_next
+            x_next = x0-F(x0,i,j,y)/(1/(2*tau)+x0/(h*(1+x0**2)))
+            #(F(x0+dx,i,j,y)-F(x0,i,j,y))*dx
+            d = abs(x_next-x_prev)
+        y[i, j] = (x_next)
+# 3D график
+
+def profile(t):
+    return [ y[ :, :] for x0 in x]
+
+
+
+for t0 in np.linspace(0, T, 5):
+    plt.plot(x, y[int(t0/tau),:], label='T =' + str(t0))
+    plt.legend()
+plt.show()
+
+
+for x0 in np.linspace(0, X, 5):
+    plt.plot(t, y[:,int(x0/h)], label='X =' + str(x0))
+    plt.legend()  
+plt.show()
+
+
+
+fig = plt.figure()
+ax = fig.gca(projection = '3d')
+t, x = np.meshgrid(t, x)
+ax.view_init(30, -30)
+ax.invert_zaxis()
+surf = ax.plot_surface(x, t, y, cmap='inferno')
+plt.xlabel('x')
+plt.ylabel('t')
